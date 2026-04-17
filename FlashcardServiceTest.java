@@ -54,6 +54,7 @@ class FlashcardServiceTest {
         when(userService.getCurrentUser()).thenReturn(currentUser);
     }
 
+    // TC-FS-001 - DeckId không null nhưng deck không tồn tại → ném RuntimeException "Deck not found"
     @Test
     void createFlashcard_shouldThrowRuntimeException_whenDeckIdProvidedButDeckNotFound() {
         FlashcardRequest request = FlashcardRequest.builder()
@@ -74,6 +75,8 @@ class FlashcardServiceTest {
         verify(progressRepository, never()).save(any());
     }
 
+    // TC-FS-002 - DeckId không null, deck tồn tại → flashcard được gắn DeckFlashcard đúng
+    // TC-FS-004 - Tạo thành công → progress được khởi tạo với easeFactor=2.5, repetitions=0, intervalDays=0, nextReviewAt=null
     @Test
     void createFlashcard_shouldCreateDeckFlashcardAndInitializeProgress_whenDeckExists() {
         FlashcardRequest request = FlashcardRequest.builder()
@@ -122,6 +125,7 @@ class FlashcardServiceTest {
         assertNull(savedProgress.getNextReviewAt());
     }
 
+    // TC-FS-003 - DeckId = null → flashcard được tạo không có DeckFlashcard
     @Test
     void createFlashcard_shouldNotCreateDeckFlashcard_whenDeckIdIsNull() {
         FlashcardRequest request = FlashcardRequest.builder()
@@ -260,6 +264,7 @@ class FlashcardServiceTest {
         verify(flashcardMapper).toResponse(flashcard2);
     }
 
+    // TC-FS-005 - DeckId không tồn tại → ném RuntimeException "Deck not found"
     @Test
     void createFlashcardsFromListWords_shouldThrowRuntimeException_whenDeckNotFound() {
         BulkFlashcardRequest request = new BulkFlashcardRequest();
@@ -278,6 +283,7 @@ class FlashcardServiceTest {
         verify(progressRepository, never()).saveAll(anyList());
     }
 
+    // TC-FS-006 - AI trả về danh sách flashcards → tất cả được lưu + mỗi cái có progress riêng với userId = deck.getOwnerId()
     @Test
     void createFlashcardsFromListWords_shouldSaveAllAndCreateProgressWithDeckOwnerId_whenAiReturnsList() {
         BulkFlashcardRequest request = new BulkFlashcardRequest();
@@ -339,6 +345,7 @@ class FlashcardServiceTest {
         }
     }
 
+    // TC-FS-007 - AI trả về danh sách rỗng → saveAll với list rỗng, không tạo progress nào
     @Test
     void createFlashcardsFromListWords_shouldSaveEmptyListAndCreateNoProgressItems_whenAiReturnsEmptyList() {
         BulkFlashcardRequest request = new BulkFlashcardRequest();
@@ -368,6 +375,7 @@ class FlashcardServiceTest {
         verify(flashcardMapper, never()).toResponse(any());
     }
 
+    // TC-FS-008 - Deck "Study Vocabulary" chưa tồn tại → tự tạo deck mới với đúng name/description/ownerId/creatorId
     @Test
     void addFlashcardsFromListWords_shouldCreateNewStudyVocabularyDeck_whenDeckDoesNotExist() {
         AddFlashcardRequest request = new AddFlashcardRequest();
@@ -421,6 +429,8 @@ class FlashcardServiceTest {
         assertNull(progresses.get(0).getNextReviewAt());
     }
 
+    // TC-FS-009 - Deck "Study Vocabulary" đã tồn tại → dùng lại deck cũ, không tạo mới
+    // TC-FS-010 - Tạo thành công → progress được khởi tạo với userId = currentUser.getId()
     @Test
     void addFlashcardsFromListWords_shouldReuseExistingDeck_whenStudyVocabularyDeckExists() {
         AddFlashcardRequest request = new AddFlashcardRequest();

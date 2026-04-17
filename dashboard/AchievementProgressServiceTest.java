@@ -34,6 +34,7 @@ class AchievementProgressServiceTest {
     @InjectMocks
     private AchievementProgressService achievementProgressService;
 
+    // TC-APS-001 - Progress chưa tồn tại → tạo mới với currentValue=0, targetValue=achievement.conditionValue
     @Test
     void updateProgress_progressNotExists_shouldCreateNew() {
         Long userId = 1L;
@@ -56,6 +57,7 @@ class AchievementProgressServiceTest {
         verify(notificationService, never()).create(any(NotificationRequest.class));
     }
 
+    // TC-APS-002 - before + delta < target → cập nhật currentValue đúng, không gửi notification
     @Test
     void updateProgress_beforePlusDeltaLessThanTarget_shouldUpdateNoNotification() {
         Long userId = 1L;
@@ -78,6 +80,7 @@ class AchievementProgressServiceTest {
         verify(notificationService, never()).create(any());
     }
 
+    // TC-APS-003 - before + delta vượt quá target → currentValue được cap bằng targetValue
     @Test
     void updateProgress_beforePlusDeltaGreaterThanTarget_shouldCapAtTarget() {
         Long userId = 1L;
@@ -98,6 +101,7 @@ class AchievementProgressServiceTest {
         verify(progressRepo).save(argThat(progress -> progress.getCurrentValue() == 10));
     }
 
+    // TC-APS-004 - before < target, after = target (vừa hoàn thành lần đầu) → gửi notification ACHIEVEMENT
     @Test
     void updateProgress_firstTimeReachingTarget_shouldSendNotification() {
         Long userId = 1L;
@@ -124,6 +128,7 @@ class AchievementProgressServiceTest {
         verify(progressRepo).save(argThat(progress -> progress.getCurrentValue() == 10));
     }
 
+    // TC-APS-005 - before đã = target (đã hoàn thành trước đó) → không gửi notification lần hai
     @Test
     void updateProgress_alreadyCompleted_shouldNotSendNotification() {
         Long userId = 1L;

@@ -27,6 +27,8 @@ class AchievementCheckerTest {
     @InjectMocks
     private AchievementChecker achievementChecker;
 
+    // TC-AC-001 - Chỉ gọi updateProgress cho achievement có conditionType = TOTAL_CARDS, bỏ qua loại khác
+    // TC-AC-002 - Gọi updateProgress với đúng delta = cardsStudied
     @Test
     void onFlashcardStudied_onlyTotalCardsAchievements_shouldUpdateWithCorrectDelta() {
         Long userId = 1L;
@@ -44,6 +46,8 @@ class AchievementCheckerTest {
         verify(progressService, never()).updateProgress(eq(userId), eq(streak), anyInt());
     }
 
+    // TC-AC-003 - Chỉ gọi updateProgress cho achievement có conditionType = STREAK_DAYS
+    // TC-AC-004 - Gọi updateProgress với delta = 1
     @Test
     void onDailyStudy_onlyStreakDaysAchievements_delta1() {
         Long userId = 1L;
@@ -61,6 +65,8 @@ class AchievementCheckerTest {
         verify(progressService, never()).updateProgress(anyLong(), eq(time), anyInt());
     }
 
+    // TC-AC-005 - Chỉ gọi updateProgress cho achievement có conditionType = TOTAL_STUDY_TIME
+    // TC-AC-006 - Gọi updateProgress với đúng delta = time
     @Test
     void onTotalTimeStudy_onlyTotalStudyTimeAchievements_correctDelta() {
         Long userId = 1L;

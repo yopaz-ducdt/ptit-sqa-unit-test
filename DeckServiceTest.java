@@ -10,11 +10,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import ptit.com.enghub.dto.request.DeckCreationRequest;
 import ptit.com.enghub.dto.response.DeckStudyStatsResponse;
 import ptit.com.enghub.dto.response.DeckSummaryResponse;
-import ptit.com.enghub.entity.Deck;
-import ptit.com.enghub.entity.DeckFlashcard;
-import ptit.com.enghub.entity.Flashcard;
-import ptit.com.enghub.entity.User;
-import ptit.com.enghub.entity.UserFlashcardProgress;
+import ptit.com.enghub.entity.*;
 import ptit.com.enghub.mapper.DeckMapper;
 import ptit.com.enghub.repository.DeckFlashcardRepository;
 import ptit.com.enghub.repository.DeckRepository;
@@ -58,24 +54,33 @@ class DeckServiceTest {
     @BeforeEach
     void setUp() {
         currentUser = User.builder().id(99L).build();
+        // Không stub global nữa
+    }
+
+    private void mockCurrentUser() {
         when(userService.getCurrentUser()).thenReturn(currentUser);
     }
 
+    // TC-DS-001 - Deck không tồn tại → ném RuntimeException "Deck not found"
     @Test
     void getDeckSummary_shouldThrowRuntimeException_whenDeckNotFound() {
         Long deckId = 1L;
+        mockCurrentUser();
         when(deckRepository.findById(deckId)).thenReturn(java.util.Optional.empty());
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> deckService.getDeckSummary(deckId));
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> deckService.getDeckSummary(deckId));
 
         assertEquals("Deck not found", exception.getMessage());
         verify(deckRepository).findById(deckId);
         verifyNoInteractions(deckFlashcardRepository, progressRepository, deckMapper);
     }
 
+    // TC-DS-002 - Deck tồn tại nhưng không có flashcard → trả về response với totalCards=0, learnedCards=0, dueCards=0, progressPercent=0
     @Test
     void getDeckSummary_shouldReturnZeroSummary_whenDeckExistsButHasNoFlashcards() {
         Long deckId = 2L;
+        mockCurrentUser();
         Deck deck = deck(deckId, "Empty Deck", "desc", currentUser.getId(), currentUser.getId(), null, List.of());
 
         when(deckRepository.findById(deckId)).thenReturn(java.util.Optional.of(deck));
@@ -97,9 +102,13 @@ class DeckServiceTest {
         verifyNoInteractions(deckMapper);
     }
 
+    // TC-DS-003 - Có flashcard, một số có repetitions > 0 → learnedCards đếm đúng số card đã học
+    // TC-DS-004 - Có card với nextReviewAt trước thời điểm hiện tại → dueCards đếm đúng
+    // TC-DS-005 - progressPercent = (learnedCards / totalCards) * 100, làm tròn xuống int
     @Test
     void getDeckSummary_shouldCalculateLearnedDueAndProgressPercentCorrectly() {
         Long deckId = 3L;
+        mockCurrentUser();
         Deck deck = deck(deckId, "Study Deck", "desc", currentUser.getId(), currentUser.getId(), null, List.of());
         List<Long> flashcardIds = List.of(10L, 11L, 12L, 13L, 14L);
 
@@ -141,6 +150,7 @@ class DeckServiceTest {
 
     @Test
     void createDeck_shouldCreateDeckForCurrentUserAndReturnSummary() {
+        mockCurrentUser();
         DeckCreationRequest request = DeckCreationRequest.builder()
                 .name("My New Deck")
                 .description("My Desc")
@@ -172,12 +182,15 @@ class DeckServiceTest {
         assertEquals(currentUser.getId(), deckToSave.getCreatorId());
     }
 
+    // TC-DS-006 - Deck gốc không tồn tại → ném RuntimeException "Deck not found"
     @Test
     void cloneDeck_shouldThrowRuntimeException_whenDeckNotFound() {
         Long deckId = 4L;
+        mockCurrentUser();
         when(deckRepository.findById(deckId)).thenReturn(java.util.Optional.empty());
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> deckService.cloneDeck(deckId));
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> deckService.cloneDeck(deckId));
 
         assertEquals("Deck not found", exception.getMessage());
         verify(deckRepository).findById(deckId);
@@ -185,119 +198,137 @@ class DeckServiceTest {
         verifyNoInteractions(flashcardRepository, progressRepository, deckFlashcardRepository, deckMapper);
     }
 
+    // TC-DS-007 - Clone thành công → deck mới có ownerId = currentUser, creatorId = deck gốc, sourceDeckId = deck gốc
+    // TC-DS-008 - Clone thành công → mỗi flashcard được copy thành flashcard mới độc lập (không dùng chung entity)
+    // TC-DS-009 - Clone thành công → mỗi flashcard clone được khởi tạo progress mới với easeFactor=2.5, repetitions=0, intervalDays=0
     @Test
-    void cloneDeck_shouldCloneDeckFlashcardsAndProgressCorrectly() {
-        Long originalDeckId = 5L;
+void cloneDeck_shouldCloneDeckFlashcardsAndProgressCorrectly() {
+    Long originalDeckId = 5L;
+    mockCurrentUser();
 
-        Flashcard originalCard1 = flashcard(201L, "term-1");
-        originalCard1.setPhonetic("pho-1");
-        originalCard1.setDefinition("def-1");
-        originalCard1.setPartOfSpeech("noun");
-        originalCard1.setExampleSentence("example-1");
+    Flashcard originalCard1 = flashcard(201L, "term-1");
+    originalCard1.setPhonetic("pho-1");
+    originalCard1.setDefinition("def-1");
+    originalCard1.setPartOfSpeech("noun");
+    originalCard1.setExampleSentence("example-1");
 
-        Flashcard originalCard2 = flashcard(202L, "term-2");
-        originalCard2.setPhonetic("pho-2");
-        originalCard2.setDefinition("def-2");
-        originalCard2.setPartOfSpeech("verb");
-        originalCard2.setExampleSentence("example-2");
+    Flashcard originalCard2 = flashcard(202L, "term-2");
+    originalCard2.setPhonetic("pho-2");
+    originalCard2.setDefinition("def-2");
+    originalCard2.setPartOfSpeech("verb");
+    originalCard2.setExampleSentence("example-2");
 
-        Deck originalDeck = deck(originalDeckId, "Original", "Origin Desc", 1L, 77L, null, new ArrayList<>());
-        DeckFlashcard originalDf1 = DeckFlashcard.builder().deck(originalDeck).flashcard(originalCard1).build();
-        DeckFlashcard originalDf2 = DeckFlashcard.builder().deck(originalDeck).flashcard(originalCard2).build();
-        originalDeck.setDeckFlashcards(List.of(originalDf1, originalDf2));
+    Deck originalDeck = deck(originalDeckId, "Original", "Origin Desc", 1L, 77L, null, new ArrayList<>());
+    DeckFlashcard originalDf1 = DeckFlashcard.builder().deck(originalDeck).flashcard(originalCard1).build();
+    DeckFlashcard originalDf2 = DeckFlashcard.builder().deck(originalDeck).flashcard(originalCard2).build();
+    originalDeck.setDeckFlashcards(List.of(originalDf1, originalDf2));
 
-        when(deckRepository.findById(originalDeckId)).thenReturn(java.util.Optional.of(originalDeck));
+    when(deckRepository.findById(originalDeckId)).thenReturn(java.util.Optional.of(originalDeck));
 
-        Deck firstSavedDeck = deck(300L, "Original", "Origin Desc", currentUser.getId(), 77L, originalDeckId, new ArrayList<>());
-        Deck secondSavedDeck = deck(300L, "Original", "Origin Desc", currentUser.getId(), 77L, originalDeckId, new ArrayList<>());
-        when(deckRepository.save(any(Deck.class))).thenReturn(firstSavedDeck, secondSavedDeck);
+    // Tạo deck clone mới (lần save thứ nhất)
+    Deck firstSavedDeck = deck(300L, "Original", "Origin Desc", currentUser.getId(), 77L, originalDeckId, new ArrayList<>());
+    
+    // Sau khi thêm flashcards, deck được save lần thứ 2
+    Deck secondSavedDeck = deck(300L, "Original", "Origin Desc", currentUser.getId(), 77L, originalDeckId, 
+            List.of(
+                DeckFlashcard.builder().flashcard(originalCard1).build(),
+                DeckFlashcard.builder().flashcard(originalCard2).build()
+            ));
+    
+    // Stub cho 2 lần save
+    when(deckRepository.save(any(Deck.class)))
+        .thenReturn(firstSavedDeck)  // lần save thứ nhất
+        .thenReturn(secondSavedDeck); // lần save thứ hai
 
-        final long[] flashcardIdSequence = {400L};
-        when(flashcardRepository.save(any(Flashcard.class))).thenAnswer(invocation -> {
-            Flashcard arg = invocation.getArgument(0);
-            arg.setId(flashcardIdSequence[0]++);
-            return arg;
-        });
+    final long[] flashcardIdSequence = {400L};
+    when(flashcardRepository.save(any(Flashcard.class))).thenAnswer(invocation -> {
+        Flashcard arg = invocation.getArgument(0);
+        arg.setId(flashcardIdSequence[0]++);
+        return arg;
+    });
 
-        when(progressRepository.save(any(UserFlashcardProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    when(progressRepository.save(any(UserFlashcardProgress.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        when(deckFlashcardRepository.findFlashcardIdsByDeckId(300L)).thenReturn(List.of(400L, 401L));
-        when(progressRepository.findByUserIdAndFlashcardIdIn(currentUser.getId(), List.of(400L, 401L))).thenReturn(List.of(
-                progress(currentUser.getId(), flashcard(400L, "term-1"), 0, 0, 2.5, null, null),
-                progress(currentUser.getId(), flashcard(401L, "term-2"), 0, 0, 2.5, null, null)
-        ));
+    when(deckFlashcardRepository.findFlashcardIdsByDeckId(300L)).thenReturn(List.of(400L, 401L));
+    when(progressRepository.findByUserIdAndFlashcardIdIn(currentUser.getId(), List.of(400L, 401L))).thenReturn(List.of(
+            progress(currentUser.getId(), flashcard(400L, "term-1"), 0, 0, 2.5, null, null),
+            progress(currentUser.getId(), flashcard(401L, "term-2"), 0, 0, 2.5, null, null)
+    ));
 
-        Deck cloneDeckForSummary = deck(300L, "Original", "Origin Desc", currentUser.getId(), 77L, originalDeckId, new ArrayList<>());
-        when(deckRepository.findById(300L)).thenReturn(java.util.Optional.of(cloneDeckForSummary));
+    Deck cloneDeckForSummary = deck(300L, "Original", "Origin Desc", currentUser.getId(), 77L, originalDeckId, new ArrayList<>());
+    when(deckRepository.findById(300L)).thenReturn(java.util.Optional.of(cloneDeckForSummary));
 
-        DeckSummaryResponse mappedSummary = DeckSummaryResponse.builder()
-                .id(300L)
-                .name("Original")
-                .description("Origin Desc")
-                .totalCards(2)
-                .sourceDeckId(originalDeckId)
-                .build();
-        when(deckMapper.toSummaryDTO(cloneDeckForSummary)).thenReturn(mappedSummary);
+    DeckSummaryResponse mappedSummary = DeckSummaryResponse.builder()
+            .id(300L)
+            .name("Original")
+            .description("Origin Desc")
+            .totalCards(2)
+            .sourceDeckId(originalDeckId)
+            .build();
+    when(deckMapper.toSummaryDTO(cloneDeckForSummary)).thenReturn(mappedSummary);
 
-        ArgumentCaptor<Deck> deckCaptor = ArgumentCaptor.forClass(Deck.class);
-        ArgumentCaptor<Flashcard> flashcardCaptor = ArgumentCaptor.forClass(Flashcard.class);
-        ArgumentCaptor<UserFlashcardProgress> progressCaptor = ArgumentCaptor.forClass(UserFlashcardProgress.class);
+    ArgumentCaptor<Deck> deckCaptor = ArgumentCaptor.forClass(Deck.class);
+    ArgumentCaptor<Flashcard> flashcardCaptor = ArgumentCaptor.forClass(Flashcard.class);
+    ArgumentCaptor<UserFlashcardProgress> progressCaptor = ArgumentCaptor.forClass(UserFlashcardProgress.class);
 
-        DeckSummaryResponse actual = deckService.cloneDeck(originalDeckId);
+    DeckSummaryResponse actual = deckService.cloneDeck(originalDeckId);
 
-        assertNotNull(actual);
-        assertEquals(300L, actual.getId());
-        assertEquals(2, actual.getTotalCards());
-        assertEquals(0, actual.getLearnedCards());
-        assertEquals(0, actual.getDueCards());
-        assertEquals(0, actual.getProgressPercent());
+    assertNotNull(actual);
+    assertEquals(300L, actual.getId());
+    assertEquals(2, actual.getTotalCards());
+    assertEquals(0, actual.getLearnedCards());
+    assertEquals(0, actual.getDueCards());
+    assertEquals(0, actual.getProgressPercent());
 
-        verify(deckRepository, times(2)).save(deckCaptor.capture());
-        List<Deck> savedDecks = deckCaptor.getAllValues();
+    // SỬA: verify 2 lần thay vì 1 lần
+    verify(deckRepository, times(2)).save(deckCaptor.capture());
+    List<Deck> savedDecks = deckCaptor.getAllValues();
+    
+    // Kiểm tra lần save thứ nhất (deck clone chưa có flashcards)
+    Deck firstSaveDeck = savedDecks.get(0);
+    assertEquals(currentUser.getId(), firstSaveDeck.getOwnerId());
+    assertEquals(originalDeck.getCreatorId(), firstSaveDeck.getCreatorId());
+    assertEquals(originalDeck.getId(), firstSaveDeck.getSourceDeckId());
+    
+    // Kiểm tra lần save thứ hai (đã có flashcards)
+    Deck secondSaveDeck = savedDecks.get(1);
+    assertNotNull(secondSaveDeck.getDeckFlashcards());
+    assertEquals(2, secondSaveDeck.getDeckFlashcards().size());
 
-        Deck clonedDeckFirstSave = savedDecks.get(0);
-        assertEquals(currentUser.getId(), clonedDeckFirstSave.getOwnerId());
-        assertEquals(originalDeck.getCreatorId(), clonedDeckFirstSave.getCreatorId());
-        assertEquals(originalDeck.getId(), clonedDeckFirstSave.getSourceDeckId());
+    verify(flashcardRepository, times(2)).save(flashcardCaptor.capture());
+    List<Flashcard> savedFlashcards = flashcardCaptor.getAllValues();
+    assertEquals(2, savedFlashcards.size());
+    assertNotSame(originalCard1, savedFlashcards.get(0));
+    assertNotSame(originalCard2, savedFlashcards.get(1));
+    assertEquals(originalCard1.getTerm(), savedFlashcards.get(0).getTerm());
+    assertEquals(originalCard2.getTerm(), savedFlashcards.get(1).getTerm());
 
-        Deck clonedDeckSecondSave = savedDecks.get(1);
-        assertNotNull(clonedDeckSecondSave.getDeckFlashcards());
-        assertEquals(2, clonedDeckSecondSave.getDeckFlashcards().size());
+    verify(progressRepository, times(2)).save(progressCaptor.capture());
+    List<UserFlashcardProgress> savedProgresses = progressCaptor.getAllValues();
+    assertEquals(2, savedProgresses.size());
 
-        verify(flashcardRepository, times(2)).save(flashcardCaptor.capture());
-        List<Flashcard> savedFlashcards = flashcardCaptor.getAllValues();
-
-        assertEquals(2, savedFlashcards.size());
-        assertNotSame(originalCard1, savedFlashcards.get(0));
-        assertNotSame(originalCard2, savedFlashcards.get(1));
-        assertEquals(originalCard1.getTerm(), savedFlashcards.get(0).getTerm());
-        assertEquals(originalCard2.getTerm(), savedFlashcards.get(1).getTerm());
-
-        verify(progressRepository, times(2)).save(progressCaptor.capture());
-        List<UserFlashcardProgress> savedProgresses = progressCaptor.getAllValues();
-        assertEquals(2, savedProgresses.size());
-
-        for (UserFlashcardProgress progress : savedProgresses) {
-            assertEquals(currentUser.getId(), progress.getUserId());
-            assertEquals(2.5, progress.getEaseFactor(), 0.000001);
-            assertEquals(0, progress.getRepetitions());
-            assertEquals(0, progress.getIntervalDays());
-            assertNull(progress.getNextReviewAt());
-        }
-
-        verify(deckRepository).findById(originalDeckId);
-        verify(deckRepository).findById(300L);
-        verify(deckFlashcardRepository).findFlashcardIdsByDeckId(300L);
-        verify(progressRepository).findByUserIdAndFlashcardIdIn(currentUser.getId(), List.of(400L, 401L));
-        verify(deckMapper).toSummaryDTO(cloneDeckForSummary);
+    for (UserFlashcardProgress progress : savedProgresses) {
+        assertEquals(currentUser.getId(), progress.getUserId());
+        assertEquals(2.5, progress.getEaseFactor(), 0.000001);
+        assertEquals(0, progress.getRepetitions());
+        assertEquals(0, progress.getIntervalDays());
+        assertNull(progress.getNextReviewAt());
     }
 
+    verify(deckRepository, times(1)).findById(originalDeckId);
+    verify(deckFlashcardRepository).findFlashcardIdsByDeckId(300L);
+    verify(progressRepository).findByUserIdAndFlashcardIdIn(currentUser.getId(), List.of(400L, 401L));
+    verify(deckMapper).toSummaryDTO(cloneDeckForSummary);
+}
+
+    // TC-DS-010 - Deck không tồn tại → ném RuntimeException "Deck not found"
     @Test
     void deleteDeck_shouldThrowRuntimeException_whenDeckNotFound() {
         Long deckId = 6L;
         when(deckRepository.existsById(deckId)).thenReturn(false);
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> deckService.deleteDeck(deckId));
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> deckService.deleteDeck(deckId));
 
         assertEquals("Deck not found", exception.getMessage());
         verify(deckRepository).existsById(deckId);
@@ -307,9 +338,11 @@ class DeckServiceTest {
         verify(deckRepository, never()).deleteById(anyLong());
     }
 
+    // TC-DS-011 - Deck có flashcard → xóa progress của user trước, rồi xóa DeckFlashcard, rồi xóa Deck
     @Test
     void deleteDeck_shouldDeleteProgressDeckFlashcardAndDeck_whenDeckHasFlashcards() {
         Long deckId = 7L;
+        mockCurrentUser();
         List<Long> flashcardIds = List.of(501L, 502L);
 
         when(deckRepository.existsById(deckId)).thenReturn(true);
@@ -324,9 +357,11 @@ class DeckServiceTest {
         verify(deckRepository).deleteById(deckId);
     }
 
+    // TC-DS-012 - Deck không có flashcard → bỏ qua bước xóa progress, vẫn xóa deck thành công
     @Test
     void deleteDeck_shouldSkipDeletingProgress_whenDeckHasNoFlashcards() {
         Long deckId = 8L;
+        mockCurrentUser();
 
         when(deckRepository.existsById(deckId)).thenReturn(true);
         when(deckFlashcardRepository.findFlashcardIdsByDeckId(deckId)).thenReturn(List.of());
@@ -340,9 +375,11 @@ class DeckServiceTest {
         verify(deckRepository).deleteById(deckId);
     }
 
+    // TC-DS-013 - Deck không có flashcard → return sớm, không gọi progressRepository.resetProgress
     @Test
     void resetDeckProgress_shouldReturnEarly_whenDeckHasNoFlashcards() {
         Long deckId = 9L;
+        mockCurrentUser();
         when(deckFlashcardRepository.findFlashcardIdsByDeckId(deckId)).thenReturn(List.of());
 
         deckService.resetDeckProgress(deckId);
@@ -354,6 +391,7 @@ class DeckServiceTest {
     @Test
     void resetDeckProgress_shouldResetProgress_whenDeckHasFlashcards() {
         Long deckId = 10L;
+        mockCurrentUser();
         List<Long> flashcardIds = List.of(601L, 602L);
         when(deckFlashcardRepository.findFlashcardIdsByDeckId(deckId)).thenReturn(flashcardIds);
 
@@ -366,18 +404,22 @@ class DeckServiceTest {
     @Test
     void getDeckStats_shouldThrowRuntimeException_whenDeckNotFound() {
         Long deckId = 11L;
+        mockCurrentUser();
         when(deckRepository.findById(deckId)).thenReturn(java.util.Optional.empty());
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> deckService.getDeckStats(deckId));
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> deckService.getDeckStats(deckId));
 
         assertEquals("Deck not found", exception.getMessage());
         verify(deckRepository).findById(deckId);
         verifyNoInteractions(flashcardRepository, progressRepository);
     }
 
+    // TC-DS-014 - Deck không có flashcard → trả về response với totalCards=0, các trường còn lại không tính
     @Test
     void getDeckStats_shouldReturnZeroTotalCards_whenNoFlashcards() {
         Long deckId = 12L;
+        mockCurrentUser();
         Deck deck = deck(deckId, "Stats Deck", "desc", currentUser.getId(), currentUser.getId(), null, List.of());
 
         when(deckRepository.findById(deckId)).thenReturn(java.util.Optional.of(deck));
@@ -395,9 +437,11 @@ class DeckServiceTest {
         verify(progressRepository, never()).findByUserIdAndFlashcardIdIn(anyLong(), anyList());
     }
 
+    // TC-DS-015 - Có nhiều flashcard với progress khác nhau → learningCards (reps=0), reviewCards (reps>0), dueTodayCards (nextReviewAt <= now), studiedToday (lastReviewedAt = hôm nay), lastStudyAt = max(lastReviewedAt), progressPercent = reviewCards/totalCards*100 đúng
     @Test
     void getDeckStats_shouldCalculateAllFieldsCorrectly_whenFlashcardsExist() {
         Long deckId = 13L;
+        mockCurrentUser();
         Deck deck = deck(deckId, "Deck Stats", "desc", currentUser.getId(), currentUser.getId(), null, List.of());
 
         Flashcard card1 = flashcard(701L, "c1");
@@ -442,6 +486,7 @@ class DeckServiceTest {
         verify(progressRepository).findByUserIdAndFlashcardIdIn(currentUser.getId(), List.of(701L, 702L, 703L, 704L));
     }
 
+    // ===== Helper Methods =====
     private Deck deck(Long id, String name, String description, Long ownerId, Long creatorId, Long sourceDeckId, List<DeckFlashcard> deckFlashcards) {
         return Deck.builder()
                 .id(id)

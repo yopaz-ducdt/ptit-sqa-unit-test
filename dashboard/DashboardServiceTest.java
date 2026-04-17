@@ -75,6 +75,7 @@ class DashboardServiceTest {
         when(userService.getCurrentUser()).thenReturn(currentUser);
     }
 
+    // TC-DBS-001 - minutesToday = null (chưa học hôm nay) → timeStudyToday = 0
     @Test
 void getDashboardUser_minutesTodayNull_shouldSetTimeStudyTodayZero() {
     // Thêm eq() cho tham số đầu tiên
@@ -86,7 +87,8 @@ void getDashboardUser_minutesTodayNull_shouldSetTimeStudyTodayZero() {
     assertEquals(0, response.getTimeStudyToday());
 }
 
-@Test
+    // TC-DBS-004 - Có đủ dữ liệu → response chứa đúng lessonComplete, flashcardsStudied, streakDays
+    @Test
 void getDashboardUser_fullData_shouldReturnCorrectResponse() {
     // minutes - Thêm eq() cho tham số đầu tiên
     when(dailyRepository.sumTotalMinutesByUserAndDateBetween(eq(currentUser.getId()), any(), any()))
@@ -119,7 +121,9 @@ void getDashboardUser_fullData_shouldReturnCorrectResponse() {
     assertEquals(50, response.getFlashcardsStudied());
 }
 
-@Test
+    // TC-DBS-006 - Có raw data → FLASHCARD/LESSON/SKILL được map đúng vào đúng ngày
+    // TC-DBS-007 - Kết quả được sort theo tên (T2 → T3 → ... → T{n})
+    @Test
 void getWeeklyActivityDataUser_withData_shouldMapCorrectlyAndSort() {
     LocalDate today = LocalDate.now();
     int todayDow = today.getDayOfWeek().getValue();
@@ -151,6 +155,7 @@ void getWeeklyActivityDataUser_withData_shouldMapCorrectlyAndSort() {
     }
 }
 
+    // TC-DBS-008 - Không có session nào → tất cả skill có duration = 0 (zero-fill)
     @Test
     void getActivitySkillDataUser_noSessions_shouldReturnAllSkillsZero() {
         when(sessionRepository.sumDurationBySkill(currentUser.getId())).thenReturn(List.of());
@@ -163,6 +168,7 @@ void getWeeklyActivityDataUser_withData_shouldMapCorrectlyAndSort() {
         }
     }
 
+    // TC-DBS-009 - Có data cho một số skill → skill có data đúng giá trị, skill không có data = 0
     @Test
     void getActivitySkillDataUser_partialData_shouldZeroMissingSkills() {
         // Cách khởi tạo an toàn

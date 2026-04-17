@@ -62,6 +62,8 @@ class StudyTrackingServiceTest {
         when(userService.getCurrentUser()).thenReturn(currentUser);
     }
 
+    // TC-STS-001 - Đây là session đầu tiên trong ngày → gọi checker.onDailyStudy một lần
+    // TC-STS-003 - Tạo session thành công → session có đủ activityType, skill, lessonId, deckId từ request
     @Test
     void startStudy_firstSessionToday_shouldCallCheckerOnce() {
         StartStudyRequest request = StartStudyRequest.builder()
@@ -87,6 +89,7 @@ class StudyTrackingServiceTest {
         assertNull(savedSession.getEndedAt());
     }
 
+    // TC-STS-002 - Đã có session trong ngày → không gọi checker.onDailyStudy
     @Test
     void startStudy_alreadyHasSessionToday_shouldNotCallChecker() {
         StartStudyRequest request = StartStudyRequest.builder().build();
@@ -99,6 +102,7 @@ class StudyTrackingServiceTest {
         verify(sessionRepo).save(any(UserStudySession.class));
     }
 
+    // TC-STS-004 - SessionId không tồn tại → ném RuntimeException "Session not found"
     @Test
     void endStudy_sessionIdNotFound_shouldThrowRuntimeException() {
         EndStudyDto request = new EndStudyDto();
@@ -113,6 +117,7 @@ class StudyTrackingServiceTest {
         verify(sessionRepo).findById(999L);
     }
 
+    // TC-STS-005 - SessionId = null, không có session nào của user → ném RuntimeException "No active session"
     @Test
     void endStudy_sessionIdNullNoActiveSession_shouldThrowRuntimeException() {
         EndStudyDto request = new EndStudyDto();
@@ -127,6 +132,7 @@ class StudyTrackingServiceTest {
         assertEquals("No active session", exception.getMessage());
     }
 
+    // TC-STS-006 - Session thuộc user khác → ném AppException UNAUTHORIZED
     @Test
     void endStudy_sessionBelongsToAnotherUser_shouldThrowAppException() {
         EndStudyDto request = new EndStudyDto();
@@ -145,6 +151,7 @@ class StudyTrackingServiceTest {
         assertEquals(ErrorCode.UNAUTHORIZED, exception.getErrorCode());
     }
 
+    // TC-STS-007 - Session đã có endedAt → return sớm, không làm gì thêm
     @Test
     void endStudy_sessionAlreadyEnded_shouldReturnEarly() {
         EndStudyDto request = new EndStudyDto();
@@ -165,6 +172,8 @@ class StudyTrackingServiceTest {
         verify(checker, never()).onTotalTimeStudy(anyLong(), anyInt());
     }
 
+    // TC-STS-008 - Duration < 1 phút → durationMinutes được set = 1 (floor)
+    // TC-STS-011 - Kết thúc thành công → gọi checker.onTotalTimeStudy với đúng durationMinutes
     @Test
     void endStudy_durationLessThanMinute_shouldSetDurationTo1() {
         EndStudyDto request = new EndStudyDto();
@@ -190,6 +199,8 @@ class StudyTrackingServiceTest {
         verify(checker).onTotalTimeStudy(currentUser.getId(), 1);
     }
 
+    // TC-STS-009 - Kết thúc thành công, chưa có UserStudyDaily → tạo mới daily với đúng totalMinutes, sessionCount=1
+    // TC-STS-011 - Kết thúc thành công → gọi checker.onTotalTimeStudy với đúng durationMinutes
     @Test
     void endStudy_noUserStudyDaily_shouldCreateNew() {
         EndStudyDto request = new EndStudyDto();
@@ -216,6 +227,8 @@ class StudyTrackingServiceTest {
         ));
     }
 
+    // TC-STS-010 - Kết thúc thành công, đã có UserStudyDaily → cộng dồn totalMinutes, sessionCount tăng 1
+    // TC-STS-011 - Kết thúc thành công → gọi checker.onTotalTimeStudy với đúng durationMinutes
     @Test
     void endStudy_existingUserStudyDaily_shouldAccumulate() {
         EndStudyDto request = new EndStudyDto();
@@ -250,6 +263,8 @@ class StudyTrackingServiceTest {
         verify(checker).onTotalTimeStudy(currentUser.getId(), 10);
     }
 
+    // TC-STS-012 - Trả về đúng 28 điểm dữ liệu (4 tuần × 7 ngày)
+    // TC-STS-013 - Ngày không có trong DB → minutes = 0 (zero-fill)
     @Test
     void getLast4WeeksWeekdayChart_shouldReturnExactly28Entries() {
         List<Object[]> rawData = List.of(
@@ -267,7 +282,8 @@ class StudyTrackingServiceTest {
         assertTrue(zeroCount > 0);
     }
 
-@Test
+    // TC-STS-014 - Có session trong ngày hôm nay → trả về true
+    @Test
     void hasSessionToday_hasSession_shouldReturnTrue() {
         doReturn(true).when(sessionRepo).existsByUserIdAndStartedAtBetween(eq(currentUser.getId()), any(), any());
 
@@ -276,6 +292,7 @@ class StudyTrackingServiceTest {
         assertTrue(result);
     }
 
+    // TC-STS-015 - Không có session nào hôm nay → trả về false
     @Test
     void hasSessionToday_noSession_shouldReturnFalse() {
         doReturn(false).when(sessionRepo).existsByUserIdAndStartedAtBetween(eq(currentUser.getId()), any(), any());
